@@ -1,6 +1,6 @@
 [project]
 name = "drucker-mcp-server"
-version = "0.1.2"
+version = "0.1.3"
 description = "MCP-Server für CUPS-Drucker: Etiketten passend zur eingelegten Rolle (Brother QL) und Dokumente (PDF, Markdown) drucken"
 readme = "README.md"
 license = { text = "MIT" }

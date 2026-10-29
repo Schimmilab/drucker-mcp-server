@@ -71,9 +71,15 @@ def _medium() -> logik.Medium:
     return logik.medium_aus_ipp(str(bereit[0]))
 
 
+_zaehler = 0
+
+
 def _vorschau(zeilen, laenge_mm, qr, rahmen, groesse, quer=False) -> tuple[logik.Medium, logik.Layout, Path]:
     medium = _medium()
-    ziel = AUSGABE / f"etikett-{time.strftime('%Y%m%d-%H%M%S')}.png"
+    # Millisekunden + Prozess-Zaehler: mehrere Vorschauen in derselben Sekunde ueberschrieben sich (29.10.)
+    global _zaehler
+    _zaehler += 1
+    ziel = AUSGABE / f"etikett-{time.strftime('%Y%m%d-%H%M%S')}-{int(time.time() * 1000) % 1000:03d}-{_zaehler}.png"
     lay = logik.rendern(zeilen, medium, ziel, laenge_mm=laenge_mm, qr_text=qr or None, groesse=groesse, quer=quer,
                         rahmen=rahmen, schrift=os.environ.get("DRUCKER_SCHRIFT"))
     return medium, lay, ziel

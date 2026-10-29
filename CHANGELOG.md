@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3 (2026-10-29)
+
+- IPP: HTTP 503 wird bis zu zweimal wiederholt (Brother QL antwortet so bei mehreren Abfragen kurz hintereinander).
+- Vorschau-Dateinamen eindeutig (Millisekunden + Zähler); vorher überschrieben sich Vorschauen derselben Sekunde.
+
 ## 0.1.2 (2026-10-29)
 
 - `quer`: Text quer zur Rolle für kurze Etiketten (z. B. 25 × 38 mm auf 38-mm-Endlos), passend für schmale Klebeflächen ohne Nachschneiden. Nur auf Endlosrollen.

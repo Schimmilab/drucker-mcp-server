@@ -7,6 +7,8 @@ den Drucker. Bewusst ohne ipptool, damit es auch ohne CUPS-Werkzeuge laeuft.
 from __future__ import annotations
 
 import struct
+import time
+import urllib.error
 import urllib.request
 from urllib.parse import unquote, urlparse
 
@@ -78,12 +80,20 @@ def drucker_attribute(uri: str, attribute: list[str], timeout: float = 8.0) -> d
     http = ("https" if u.scheme == "ipps" else "http") + f"://{u.hostname}:{u.port or 631}{u.path or '/'}"
     req = urllib.request.Request(http, data=anfrage(uri, attribute),
                                  headers={"Content-Type": "application/ipp"})
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
-            status, attrs = parse_antwort(r.read())
-    except OSError as e:  # URLError, Timeout, Verbindung abgelehnt
-        raise RuntimeError(f"Drucker unter {u.hostname} nicht erreichbar ({getattr(e, 'reason', e)}). "
-                           "Ist er eingeschaltet und im Netz?") from e
+    for versuch in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                status, attrs = parse_antwort(r.read())
+            break
+        except urllib.error.HTTPError as e:
+            # Brother QL antwortet bei mehreren Abfragen kurz hintereinander mit 503 (29.10. belegt)
+            if e.code == 503 and versuch < 2:
+                time.sleep(1.0 + versuch)
+                continue
+            raise RuntimeError(f"Drucker unter {u.hostname} antwortet mit HTTP {e.code} ({e.reason}).") from e
+        except OSError as e:  # URLError, Timeout, Verbindung abgelehnt
+            raise RuntimeError(f"Drucker unter {u.hostname} nicht erreichbar ({getattr(e, 'reason', e)}). "
+                               "Ist er eingeschaltet und im Netz?") from e
     if status >= 0x0100:
         raise RuntimeError(f"Drucker meldet IPP-Status 0x{status:04x} für {uri}")
     return attrs

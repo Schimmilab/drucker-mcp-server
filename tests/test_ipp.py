@@ -55,3 +55,37 @@ def test_dnssd_dienstname():
     uri = "dnssd://Brother%20QL-820NWB._ipp._tcp.local./?uuid=e3248000-80ce-11db-8000-0080775e6c12"
     assert ipp.dnssd_dienstname(uri) == "Brother QL-820NWB._ipp._tcp.local."
     assert ipp.dnssd_dienstname("ipp://host/ipp/print") is None
+
+
+def test_503_wird_wiederholt_dann_klappt_es(monkeypatch):
+    # Anlass 29.10.: fuenf parallele Vorschauen -> Brother antwortet 503
+    import io
+    import urllib.error
+    import urllib.request
+
+    ok = _antwort(0, _a(ipp.TAG_KEYWORD, "media-ready", b"roll_current_38x0mm"))
+    aufrufe = []
+
+    def fake(req, timeout):
+        aufrufe.append(1)
+        if len(aufrufe) == 1:
+            raise urllib.error.HTTPError(req.full_url, 503, "Service Temporarily Unavailable", {}, None)
+        return io.BytesIO(ok)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    monkeypatch.setattr(ipp.time, "sleep", lambda s: None)
+    assert ipp.drucker_attribute("ipp://d:631/ipp/print", ["media-ready"])["media-ready"] == ["roll_current_38x0mm"]
+    assert len(aufrufe) == 2
+
+
+def test_503_dauerhaft_gibt_klaren_fehler(monkeypatch):
+    import urllib.error
+    import urllib.request
+
+    def fake(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 503, "Service Temporarily Unavailable", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake)
+    monkeypatch.setattr(ipp.time, "sleep", lambda s: None)
+    with pytest.raises(RuntimeError, match="503"):
+        ipp.drucker_attribute("ipp://d:631/ipp/print", ["media-ready"])
