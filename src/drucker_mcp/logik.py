@@ -88,6 +88,7 @@ class Layout:
     schriftgroesse: int
     laenge_mm: float
     qr_px: int = 0      # Kantenlaenge des QR-Codes, 0 = keiner
+    quer: bool = False  # Text laeuft quer zur Rolle (Etikett kurz, Rollenbreite = Textbreite)
 
 
 def layout(zeilen: list[str], medium: Medium, laenge_mm: float | None = None,
@@ -114,7 +115,7 @@ def layout(zeilen: list[str], medium: Medium, laenge_mm: float | None = None,
 
     hoehe = mm_zu_px(medium.breite_mm)
     nutz_h = hoehe - 2 * RAND_PX
-    qr_min = mm_zu_px(15)  # darunter wird der Code mit dem Handy unzuverlaessig
+    qr_min = min(mm_zu_px(15), nutz_h)  # unter 15 mm wird der Code mit dem Handy unzuverlaessig
     max_laenge = mm_zu_px(laenge_mm) if laenge_mm else None
 
     probe = Image.new("1", (1, 1))
@@ -137,11 +138,45 @@ def layout(zeilen: list[str], medium: Medium, laenge_mm: float | None = None,
                      "Weniger Text oder (bei Endlosrolle) größere laenge_mm.")
 
 
+
+def layout_quer(zeilen: list[str], medium: Medium, laenge_mm: float, qr: bool = False,
+                schrift: str | None = None, groesse: str = "mittel") -> Layout:
+    """Text quer zur Rolle: die Rollenbreite ist die Textbreite, laenge_mm die Hoehe.
+
+    Fuer kurze Etiketten, die quer aufgeklebt werden (Schimmi 29.10.: 25 x 38 mm auf die Steckdose,
+    die Flaeche ist nur 25 mm hoch und es soll nichts von Hand abgeschnitten werden). QR sitzt links.
+    """
+    zeilen = [z for z in zeilen if z.strip()]
+    if not zeilen:
+        raise ValueError("Kein Text: mindestens eine nicht-leere Zeile angeben.")
+    if groesse not in GROESSEN:
+        raise ValueError(f"groesse muss eines von {', '.join(GROESSEN)} sein, nicht {groesse!r}.")
+    if not medium.endlos:
+        raise ValueError(f"quer geht nur auf Endlosrollen; eingelegt sind {medium.text()}.")
+    if not 10 <= laenge_mm <= 100:
+        raise ValueError("Bei quer muss laenge_mm zwischen 10 und 100 mm liegen (das ist die Etikett-Höhe).")
+    breite = mm_zu_px(medium.breite_mm)
+    hoehe = mm_zu_px(laenge_mm)
+    nutz_h = hoehe - 2 * RAND_PX
+    qr_px = min(nutz_h, mm_zu_px(15)) if qr else 0
+    nutz_b = breite - 2 * RAND_PX - (qr_px + RAND_PX if qr else 0)
+    probe = ImageDraw.Draw(Image.new("1", (1, 1)))
+    for g in range(min(nutz_h, 220, GROESSEN[groesse]), 7, -1):
+        f = _schrift(g, schrift)
+        block_h = g * len(zeilen) + g * ZEILENABSTAND * (len(zeilen) - 1)
+        if block_h <= nutz_h and max(probe.textlength(z, font=f) for z in zeilen) <= nutz_b:
+            return Layout(breite, hoehe, g, float(laenge_mm), qr_px, True)
+    raise ValueError("Text passt quer nicht aufs Etikett. Weniger Text, ohne QR oder größere laenge_mm.")
+
 def rendern(zeilen: list[str], medium: Medium, ziel: Path, laenge_mm: float | None = None,
             qr_text: str | None = None, rahmen: bool = False,
-            schrift: str | None = None, groesse: str = "mittel") -> Layout:
+            schrift: str | None = None, groesse: str = "mittel", quer: bool = False) -> Layout:
     """Etikett als 1-Bit-PNG: ziel quer zum Ansehen, druckdatei(ziel) hochkant (Breite = Rolle) fuer CUPS."""
     zeilen = [ersetze_platzhalter(z) for z in zeilen if z.strip()]
+    if quer:
+        if laenge_mm is None:
+            raise ValueError("quer braucht laenge_mm (Etikett-Höhe, z. B. 25).")
+        return _rendern_quer(zeilen, medium, ziel, laenge_mm, qr_text, rahmen, schrift, groesse)
     lay = layout(zeilen, medium, laenge_mm, qr=bool(qr_text), schrift=schrift, groesse=groesse)
     f = _schrift(lay.schriftgroesse, schrift)
     quer = Image.new("1", (lay.laenge_px, lay.breite_px), 1)
@@ -168,6 +203,32 @@ def rendern(zeilen: list[str], medium: Medium, ziel: Path, laenge_mm: float | No
     ziel.parent.mkdir(parents=True, exist_ok=True)
     quer.save(ziel)
     quer.rotate(90, expand=True).save(druckdatei(ziel))
+    return lay
+
+
+def _rendern_quer(zeilen, medium, ziel, laenge_mm, qr_text, rahmen, schrift, groesse) -> Layout:
+    lay = layout_quer(zeilen, medium, laenge_mm, qr=bool(qr_text), schrift=schrift, groesse=groesse)
+    f = _schrift(lay.schriftgroesse, schrift)
+    bild = Image.new("1", (lay.breite_px, lay.laenge_px), 1)  # Breite = Rolle, schon druckfertig
+    d = ImageDraw.Draw(bild)
+    x0 = RAND_PX
+    if qr_text:
+        import qrcode
+        q = qrcode.make(qr_text, border=1).convert("1").resize((lay.qr_px, lay.qr_px), Image.NEAREST)
+        bild.paste(q, (RAND_PX, (lay.laenge_px - lay.qr_px) // 2))
+        x0 = RAND_PX + lay.qr_px + RAND_PX
+    g = lay.schriftgroesse
+    block_h = g * len(zeilen) + g * ZEILENABSTAND * (len(zeilen) - 1)
+    y = (lay.laenge_px - block_h) / 2
+    mitte_x = x0 + (lay.breite_px - RAND_PX - x0) / 2
+    for z in zeilen:
+        d.text((mitte_x, y + g / 2), z, font=f, fill=0, anchor="mm")
+        y += g * (1 + ZEILENABSTAND)
+    if rahmen:
+        d.rectangle((3, 3, lay.breite_px - 4, lay.laenge_px - 4), outline=0, width=4)
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    bild.save(ziel)
+    bild.save(druckdatei(ziel))
     return lay
 
 

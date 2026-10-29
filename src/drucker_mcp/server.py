@@ -71,16 +71,16 @@ def _medium() -> logik.Medium:
     return logik.medium_aus_ipp(str(bereit[0]))
 
 
-def _vorschau(zeilen, laenge_mm, qr, rahmen, groesse) -> tuple[logik.Medium, logik.Layout, Path]:
+def _vorschau(zeilen, laenge_mm, qr, rahmen, groesse, quer=False) -> tuple[logik.Medium, logik.Layout, Path]:
     medium = _medium()
     ziel = AUSGABE / f"etikett-{time.strftime('%Y%m%d-%H%M%S')}.png"
-    lay = logik.rendern(zeilen, medium, ziel, laenge_mm=laenge_mm, qr_text=qr or None, groesse=groesse,
+    lay = logik.rendern(zeilen, medium, ziel, laenge_mm=laenge_mm, qr_text=qr or None, groesse=groesse, quer=quer,
                         rahmen=rahmen, schrift=os.environ.get("DRUCKER_SCHRIFT"))
     return medium, lay, ziel
 
 
 def _beschreibung(medium: logik.Medium, lay: logik.Layout, ziel: Path) -> str:
-    return (f"Rolle: {medium.text()}\nEtikett: {medium.breite_mm:g} × {lay.laenge_mm:g} mm, "
+    return (f"Rolle: {medium.text()}\nEtikett: {medium.breite_mm:g} × {lay.laenge_mm:g} mm{', Text quer' if lay.quer else ''}, "
             f"Schrift {lay.schriftgroesse} px\nVorschau: file://{ziel}")
 
 
@@ -110,28 +110,32 @@ def etikett_rolle() -> str:
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": False})
 def etikett_vorschau(zeilen: list[str], groesse: str = "mittel", laenge_mm: float | None = None,
-                     qr: str = "", rahmen: bool = False) -> str:
+                     quer: bool = False, qr: str = "",
+                     rahmen: bool = False) -> str:
     """Rendert ein Etikett passend zur eingelegten Rolle als PNG, OHNE zu drucken.
 
     zeilen: 1–6 Textzeilen. {datum} = heute.
     groesse: Schrift-Obergrenze 'klein' (~4 mm), 'mittel' (~7 mm, Standard) oder 'gross' (füllt die
       Rollenbreite). Auf Endlosrollen bestimmt sie damit auch die Länge des Etiketts.
     laenge_mm: feste Länge, nur bei Endlosrolle; die Schrift wird dann so groß wie hineinpasst.
+    quer: Text quer zur Rolle, für kurze Etiketten, die quer aufgeklebt werden. laenge_mm ist dann
+      die Etikett-Höhe (z. B. 25 → 25 × 38 mm auf der 38-mm-Rolle), kein Abschneiden nötig.
     qr: optionaler Inhalt für einen QR-Code links (z. B. eine URL).
     """
-    return _beschreibung(*_vorschau(zeilen, laenge_mm, qr, rahmen, groesse))
+    return _beschreibung(*_vorschau(zeilen, laenge_mm, qr, rahmen, groesse, quer))
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False})
 def etikett_drucken(zeilen: list[str], kopien: int = 1, groesse: str = "mittel",
-                    laenge_mm: float | None = None, qr: str = "", rahmen: bool = False) -> str:
+                    laenge_mm: float | None = None, quer: bool = False, qr: str = "",
+                    rahmen: bool = False) -> str:
     """Druckt ein Etikett auf dem Etikettendrucker – nur auf ausdrücklichen Auftrag, vorher etikett_vorschau.
 
     Gleiche Parameter wie etikett_vorschau, dazu kopien (1–20). Die Rolle wird vor dem Druck gelesen.
     """
     if not 1 <= kopien <= 20:
         raise ValueError("kopien muss zwischen 1 und 20 liegen.")
-    medium, lay, ziel = _vorschau(zeilen, laenge_mm, qr, rahmen, groesse)
+    medium, lay, ziel = _vorschau(zeilen, laenge_mm, qr, rahmen, groesse, quer)
     opt = logik.cups_optionen_etikett(medium, lay) + ["-n", str(kopien)]
     auftrag = cups.drucken(_etikett_queue(), str(logik.druckdatei(ziel)), opt, titel="Etikett: " + zeilen[0][:40])
     return f"Gedruckt: Auftrag {auftrag}, {kopien}×\n" + _beschreibung(medium, lay, ziel)

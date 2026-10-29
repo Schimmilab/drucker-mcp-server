@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 (2026-10-29)
+
+- `quer`: Text quer zur Rolle für kurze Etiketten (z. B. 25 × 38 mm auf 38-mm-Endlos), passend für schmale Klebeflächen ohne Nachschneiden. Nur auf Endlosrollen.
+
 ## 0.1.1 (2026-10-29)
 
 - Größenstufe `groesse` für Etiketten (`klein`/`mittel`/`gross`, Standard `mittel`). Vorher füllte die Schrift immer die Rollenbreite, zwei kurze Zeilen mit QR ergaben auf 38 mm endlos ein 155-mm-Etikett (jetzt 70 mm).

@@ -134,3 +134,30 @@ def test_qr_waechst_mit_schrift_aber_nie_unter_15mm():
     assert klein.qr_px >= logik.mm_zu_px(15)
     assert gross.qr_px > klein.qr_px
     assert logik.layout(["Keller"], ENDLOS).qr_px == 0
+
+
+def test_quer_kurzes_etikett_ohne_abschneiden(tmp_path: Path):
+    # Anlass 29.10.: 25 x 38 mm quer auf die Steckdose
+    ziel = tmp_path / "q.png"
+    lay = logik.rendern(["Handtuchwärmer", "Bad"], ENDLOS, ziel, laenge_mm=25, quer=True,
+                        qr_text="http://x.fritz.box")
+    assert lay.quer and lay.laenge_px == logik.mm_zu_px(25)
+    with Image.open(logik.druckdatei(ziel)) as img:
+        assert img.size == (logik.mm_zu_px(38), logik.mm_zu_px(25))  # Breite = Rolle
+    opt = logik.cups_optionen_etikett(ENDLOS, lay)
+    assert "PageSize=Custom.38x25mm" in opt
+
+
+def test_quer_ohne_laenge_abgelehnt(tmp_path: Path):
+    with pytest.raises(ValueError, match="laenge_mm"):
+        logik.rendern(["X"], ENDLOS, tmp_path / "x.png", quer=True)
+
+
+def test_quer_auf_gestanzt_abgelehnt():
+    with pytest.raises(ValueError, match="Endlos"):
+        logik.layout_quer(["X"], GESTANZT, 25)
+
+
+def test_quer_zu_viel_text_abgelehnt():
+    with pytest.raises(ValueError, match="passt quer nicht"):
+        logik.layout_quer(["X" * 200], ENDLOS, 25)

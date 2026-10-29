@@ -9,7 +9,7 @@ Vor jedem Etikettendruck fragt der Server den Drucker per IPP, welche Rolle eing
 | Endlos, z. B. `roll_current_38x0mm` | Höhe = Rollenbreite, Länge ergibt sich aus dem Text (oder `laenge_mm`) |
 | Vorgestanzt, z. B. `…_38x90mm` | feste Größe; ein Auftrag mit anderer Länge wird **nicht** gedruckt |
 
-Die Schriftgröße wählt man über `groesse`: `klein` (~4 mm), `mittel` (~7 mm, Standard) oder `gross` (füllt die Rollenbreite). Auf einer Endlosrolle legt sie damit auch die Länge fest. Mit `laenge_mm` gibt man stattdessen eine feste Länge vor, die Schrift passt sich dann an. Ein QR-Code wächst mit dem Text, ist aber nie kleiner als 15 mm. In jeder Zeile wird `{datum}` durch das heutige Datum ersetzt.
+Die Schriftgröße wählt man über `groesse`: `klein` (~4 mm), `mittel` (~7 mm, Standard) oder `gross` (füllt die Rollenbreite). Auf einer Endlosrolle legt sie damit auch die Länge fest. Mit `laenge_mm` gibt man stattdessen eine feste Länge vor, die Schrift passt sich dann an. Mit `quer=true` läuft der Text quer zur Rolle; `laenge_mm` ist dann die Höhe des Etiketts. So entstehen kurze Etiketten wie 25 × 38 mm für schmale Klebeflächen (z. B. Steckdosen), ohne Nachschneiden. Ein QR-Code wächst mit dem Text, ist aber nie kleiner als 15 mm. In jeder Zeile wird `{datum}` durch das heutige Datum ersetzt.
 
 ## Werkzeuge
 
