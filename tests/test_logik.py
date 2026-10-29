@@ -58,8 +58,8 @@ def test_leerer_text_wird_abgelehnt():
 
 
 def test_mehr_zeilen_kleinere_schrift():
-    eine = logik.layout(["Zeile"], ENDLOS).schriftgroesse
-    vier = logik.layout(["Zeile"] * 4, ENDLOS).schriftgroesse
+    eine = logik.layout(["Zeile"], ENDLOS, groesse="gross").schriftgroesse
+    vier = logik.layout(["Zeile"] * 4, ENDLOS, groesse="gross").schriftgroesse
     assert vier < eine
 
 
@@ -102,3 +102,35 @@ def test_dokument_optionen():
 def test_dokument_seitenbereich_unsinn_abgelehnt(seiten):
     with pytest.raises(ValueError):
         logik.cups_optionen_dokument(True, False, seiten, 1)
+
+
+def test_groesse_bestimmt_laenge_auf_endlosrolle():
+    # Anlass 29.10.: volle Schrift ergab ein 155-mm-Etikett fuer zwei kurze Zeilen
+    z = ["drucker-mcp", "Test 29.10.2026"]
+    l = {g: logik.layout(z, ENDLOS, groesse=g) for g in ("klein", "mittel", "gross")}
+    assert l["klein"].laenge_px < l["mittel"].laenge_px < l["gross"].laenge_px
+    assert l["klein"].schriftgroesse < l["mittel"].schriftgroesse < l["gross"].schriftgroesse
+    assert l["mittel"].laenge_mm < 90
+
+
+def test_standard_ist_mittel():
+    assert logik.layout(["Salz"], ENDLOS) == logik.layout(["Salz"], ENDLOS, groesse="mittel")
+
+
+def test_unbekannte_groesse_abgelehnt():
+    with pytest.raises(ValueError, match="groesse"):
+        logik.layout(["Salz"], ENDLOS, groesse="riesig")
+
+
+def test_feste_laenge_schlaegt_groessenstufe_nicht_ueber():
+    # laenge_mm kuerzer als der Text in "mittel" braucht -> Schrift wird kleiner, Laenge bleibt
+    lay = logik.layout(["Salz-Dillgurken"], ENDLOS, laenge_mm=40)
+    assert lay.laenge_px == logik.mm_zu_px(40) and lay.schriftgroesse < logik.GROESSEN["mittel"]
+
+
+def test_qr_waechst_mit_schrift_aber_nie_unter_15mm():
+    klein = logik.layout(["Keller"], ENDLOS, qr=True, groesse="klein")
+    gross = logik.layout(["Keller"], ENDLOS, qr=True, groesse="gross")
+    assert klein.qr_px >= logik.mm_zu_px(15)
+    assert gross.qr_px > klein.qr_px
+    assert logik.layout(["Keller"], ENDLOS).qr_px == 0

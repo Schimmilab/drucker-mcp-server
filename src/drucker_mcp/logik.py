@@ -16,6 +16,10 @@ RAND_PX = 18          # Innenabstand zum Rand des Etiketts
 ZEILENABSTAND = 0.22  # Anteil der Schrifthoehe
 MAX_ZEILEN = 6
 
+# Obergrenze der Schrift (px bei 300 dpi). "gross" fuellt die Rollenbreite ganz aus;
+# auf einer Endlosrolle wird das Etikett dann entsprechend lang (Schimmi 29.10.: „Riesenetikett").
+GROESSEN = {"klein": 50, "mittel": 80, "gross": 10_000}  # ~4 mm / ~7 mm Versalhoehe / unbegrenzt
+
 # Schriften in dieser Reihenfolge versuchen; DRUCKER_SCHRIFT (Umgebung) hat Vorrang.
 SCHRIFTEN = [
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -83,10 +87,11 @@ class Layout:
     laenge_px: int      # in Laufrichtung
     schriftgroesse: int
     laenge_mm: float
+    qr_px: int = 0      # Kantenlaenge des QR-Codes, 0 = keiner
 
 
 def layout(zeilen: list[str], medium: Medium, laenge_mm: float | None = None,
-           qr: bool = False, schrift: str | None = None) -> Layout:
+           qr: bool = False, schrift: str | None = None, groesse: str = "mittel") -> Layout:
     """Groesste Schrift, bei der alle Zeilen auf das Etikett passen.
 
     Gerendert wird quer (Text laeuft entlang der Rolle): die Rollenbreite ist die HOEHE des
@@ -97,6 +102,8 @@ def layout(zeilen: list[str], medium: Medium, laenge_mm: float | None = None,
         raise ValueError("Kein Text: mindestens eine nicht-leere Zeile angeben.")
     if len(zeilen) > MAX_ZEILEN:
         raise ValueError(f"Höchstens {MAX_ZEILEN} Zeilen, bekommen: {len(zeilen)}.")
+    if groesse not in GROESSEN:
+        raise ValueError(f"groesse muss eines von {', '.join(GROESSEN)} sein, nicht {groesse!r}.")
     if laenge_mm is not None and laenge_mm <= 0:
         raise ValueError("laenge_mm muss positiv sein.")
     if not medium.endlos:
@@ -107,33 +114,35 @@ def layout(zeilen: list[str], medium: Medium, laenge_mm: float | None = None,
 
     hoehe = mm_zu_px(medium.breite_mm)
     nutz_h = hoehe - 2 * RAND_PX
-    qr_px = nutz_h if qr else 0
+    qr_min = mm_zu_px(15)  # darunter wird der Code mit dem Handy unzuverlaessig
     max_laenge = mm_zu_px(laenge_mm) if laenge_mm else None
 
     probe = Image.new("1", (1, 1))
     d = ImageDraw.Draw(probe)
-    for groesse in range(min(nutz_h, 220), 7, -1):
-        f = _schrift(groesse, schrift)
+    obergrenze = min(nutz_h, 220, GROESSEN[groesse])
+    for groesse_px in range(obergrenze, 7, -1):
+        f = _schrift(groesse_px, schrift)
         breiten = [d.textlength(z, font=f) for z in zeilen]
-        block_h = groesse * len(zeilen) + groesse * ZEILENABSTAND * (len(zeilen) - 1)
+        block_h = groesse_px * len(zeilen) + groesse_px * ZEILENABSTAND * (len(zeilen) - 1)
         if block_h > nutz_h:
             continue
+        qr_px = min(nutz_h, max(int(block_h), qr_min)) if qr else 0
         text_l = max(breiten)
         gesamt = int(text_l + qr_px + (RAND_PX if qr else 0) + 2 * RAND_PX)
         if max_laenge is not None and gesamt > max_laenge:
             continue
         laenge_px = max_laenge if max_laenge is not None else max(gesamt, hoehe)
-        return Layout(hoehe, laenge_px, groesse, round(laenge_px / DPI * 25.4, 1))
+        return Layout(hoehe, laenge_px, groesse_px, round(laenge_px / DPI * 25.4, 1), qr_px)
     raise ValueError("Text passt nicht aufs Etikett, auch nicht in kleinster Schrift. "
                      "Weniger Text oder (bei Endlosrolle) größere laenge_mm.")
 
 
 def rendern(zeilen: list[str], medium: Medium, ziel: Path, laenge_mm: float | None = None,
             qr_text: str | None = None, rahmen: bool = False,
-            schrift: str | None = None) -> Layout:
+            schrift: str | None = None, groesse: str = "mittel") -> Layout:
     """Etikett als 1-Bit-PNG: ziel quer zum Ansehen, druckdatei(ziel) hochkant (Breite = Rolle) fuer CUPS."""
     zeilen = [ersetze_platzhalter(z) for z in zeilen if z.strip()]
-    lay = layout(zeilen, medium, laenge_mm, qr=bool(qr_text), schrift=schrift)
+    lay = layout(zeilen, medium, laenge_mm, qr=bool(qr_text), schrift=schrift, groesse=groesse)
     f = _schrift(lay.schriftgroesse, schrift)
     quer = Image.new("1", (lay.laenge_px, lay.breite_px), 1)
     d = ImageDraw.Draw(quer)
@@ -141,9 +150,9 @@ def rendern(zeilen: list[str], medium: Medium, ziel: Path, laenge_mm: float | No
     x0 = RAND_PX
     if qr_text:
         import qrcode
-        seite = lay.breite_px - 2 * RAND_PX
+        seite = lay.qr_px
         q = qrcode.make(qr_text, border=1).convert("1").resize((seite, seite), Image.NEAREST)
-        quer.paste(q, (RAND_PX, RAND_PX))
+        quer.paste(q, (RAND_PX, (lay.breite_px - seite) // 2))
         x0 = RAND_PX + seite + RAND_PX
 
     zeilen_h = lay.schriftgroesse * (1 + ZEILENABSTAND)

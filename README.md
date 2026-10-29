@@ -9,7 +9,7 @@ Vor jedem Etikettendruck fragt der Server den Drucker per IPP, welche Rolle eing
 | Endlos, z. B. `roll_current_38x0mm` | Höhe = Rollenbreite, Länge ergibt sich aus dem Text (oder `laenge_mm`) |
 | Vorgestanzt, z. B. `…_38x90mm` | feste Größe; ein Auftrag mit anderer Länge wird **nicht** gedruckt |
 
-Die Schrift wird so groß gewählt, wie es die Rolle zulässt. In jeder Zeile wird `{datum}` durch das heutige Datum ersetzt.
+Die Schriftgröße wählt man über `groesse`: `klein` (~4 mm), `mittel` (~7 mm, Standard) oder `gross` (füllt die Rollenbreite). Auf einer Endlosrolle legt sie damit auch die Länge fest. Mit `laenge_mm` gibt man stattdessen eine feste Länge vor, die Schrift passt sich dann an. Ein QR-Code wächst mit dem Text, ist aber nie kleiner als 15 mm. In jeder Zeile wird `{datum}` durch das heutige Datum ersetzt.
 
 ## Werkzeuge
 
@@ -18,7 +18,7 @@ Die Schrift wird so groß gewählt, wie es die Rolle zulässt. In jeder Zeile wi
 | `drucker_liste` | alle CUPS-Drucker mit Status, beim Etikettendrucker die eingelegte Rolle |
 | `etikett_rolle` | liest die eingelegte Rolle (Breite, endlos/vorgestanzt) |
 | `etikett_vorschau` | rendert das Etikett als PNG, **ohne zu drucken** |
-| `etikett_drucken` | druckt 1–20 Kopien; Zeilen, optional QR-Code und Rahmen |
+| `etikett_drucken` | druckt 1–20 Kopien; Zeilen, Größe, optional feste Länge, QR-Code und Rahmen |
 | `datei_drucken` | PDF/Markdown/HTML, Farbe oder SW, Duplex, Seitenbereich, Kopien; Markdown/HTML wird per Chrome headless zu A4-PDF |
 | `druckauftraege` | offene Aufträge (z. B. wenn ein Drucker aus ist) |
 | `druckauftrag_abbrechen` | offenen Auftrag abbrechen |

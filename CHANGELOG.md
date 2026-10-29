@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.1 (2026-10-29)
+
+- Größenstufe `groesse` für Etiketten (`klein`/`mittel`/`gross`, Standard `mittel`). Vorher füllte die Schrift immer die Rollenbreite, zwei kurze Zeilen mit QR ergaben auf 38 mm endlos ein 155-mm-Etikett (jetzt 70 mm).
+- QR-Code skaliert mit dem Textblock, mindestens 15 mm.
+- Vorschau quer und lesbar, Druckdatei getrennt (hochkant).
+- Klartext-Fehler, wenn der Drucker nicht erreichbar ist.
+
 ## 0.1.0 (2026-10-29)
 
 - Etiketten passend zur eingelegten Rolle: Rolle per IPP lesen (Bonjour-Queue wird selbst aufgelöst), Layout für Endlos- und vorgestanzte Rollen, Schrift automatisch, QR-Code, Rahmen, `{datum}`.
