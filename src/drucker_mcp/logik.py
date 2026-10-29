@@ -1,0 +1,186 @@
+"""Reine Logik ohne Geraetezugriff: Medium aus IPP lesen, Etikett layouten und rendern.
+
+Alles hier ist ohne Drucker testbar. Der Geraetezugriff liegt in ipp.py und cups.py.
+"""
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+from datetime import date
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
+
+DPI = 300
+RAND_PX = 18          # Innenabstand zum Rand des Etiketts
+ZEILENABSTAND = 0.22  # Anteil der Schrifthoehe
+MAX_ZEILEN = 6
+
+# Schriften in dieser Reihenfolge versuchen; DRUCKER_SCHRIFT (Umgebung) hat Vorrang.
+SCHRIFTEN = [
+    "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+    "C:/Windows/Fonts/arialbd.ttf",
+]
+
+
+@dataclass(frozen=True)
+class Medium:
+    breite_mm: float
+    laenge_mm: float | None  # None = Endlosrolle, Laenge frei
+    roh: str
+
+    @property
+    def endlos(self) -> bool:
+        return self.laenge_mm is None
+
+    def text(self) -> str:
+        if self.endlos:
+            return f"{self.breite_mm:g} mm endlos (Länge frei)"
+        return f"{self.breite_mm:g} × {self.laenge_mm:g} mm vorgestanzt"
+
+
+_MASS = re.compile(r"(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)mm$")
+
+
+def medium_aus_ipp(media_ready: str) -> Medium:
+    """IPP-Keyword media-ready -> Medium.
+
+    Beispiele (Brother QL-820NWB): 'roll_current_38x0mm' = 38 mm endlos,
+    'om_brother-label-29x90mm_29x90mm' bzw. '..._38x90mm' = vorgestanzt.
+    Laenge 0 bedeutet Endlosrolle.
+    """
+    m = _MASS.search(media_ready.strip())
+    if not m:
+        raise ValueError(f"Unbekanntes Medienformat vom Drucker: {media_ready!r}")
+    breite, laenge = float(m[1]), float(m[2])
+    if breite <= 0:
+        raise ValueError(f"Medium ohne Breite: {media_ready!r}")
+    return Medium(breite, None if laenge == 0 else laenge, media_ready)
+
+
+def mm_zu_px(mm: float) -> int:
+    return round(mm / 25.4 * DPI)
+
+
+def ersetze_platzhalter(zeile: str, heute: date | None = None) -> str:
+    """{datum} -> heutiges Datum TT.MM.JJJJ (praktisch fuer Einmach- und Vorratsetiketten)."""
+    return zeile.replace("{datum}", (heute or date.today()).strftime("%d.%m.%Y"))
+
+
+def _schrift(groesse: int, pfad: str | None = None) -> ImageFont.FreeTypeFont:
+    for p in ([pfad] if pfad else []) + SCHRIFTEN:
+        if p and Path(p).is_file():
+            return ImageFont.truetype(p, groesse)
+    return ImageFont.load_default(size=groesse)
+
+
+@dataclass(frozen=True)
+class Layout:
+    breite_px: int      # quer zur Laufrichtung = Rollenbreite
+    laenge_px: int      # in Laufrichtung
+    schriftgroesse: int
+    laenge_mm: float
+
+
+def layout(zeilen: list[str], medium: Medium, laenge_mm: float | None = None,
+           qr: bool = False, schrift: str | None = None) -> Layout:
+    """Groesste Schrift, bei der alle Zeilen auf das Etikett passen.
+
+    Gerendert wird quer (Text laeuft entlang der Rolle): die Rollenbreite ist die HOEHE des
+    Textblocks, die Laenge ergibt sich bei Endlosrollen aus dem Text.
+    """
+    zeilen = [z for z in zeilen if z.strip()]
+    if not zeilen:
+        raise ValueError("Kein Text: mindestens eine nicht-leere Zeile angeben.")
+    if len(zeilen) > MAX_ZEILEN:
+        raise ValueError(f"Höchstens {MAX_ZEILEN} Zeilen, bekommen: {len(zeilen)}.")
+    if laenge_mm is not None and laenge_mm <= 0:
+        raise ValueError("laenge_mm muss positiv sein.")
+    if not medium.endlos:
+        if laenge_mm is not None and abs(laenge_mm - medium.laenge_mm) > 0.5:
+            raise ValueError(f"Eingelegt sind {medium.text()}; eine Länge von {laenge_mm:g} mm "
+                             "ist damit nicht druckbar. laenge_mm weglassen.")
+        laenge_mm = medium.laenge_mm
+
+    hoehe = mm_zu_px(medium.breite_mm)
+    nutz_h = hoehe - 2 * RAND_PX
+    qr_px = nutz_h if qr else 0
+    max_laenge = mm_zu_px(laenge_mm) if laenge_mm else None
+
+    probe = Image.new("1", (1, 1))
+    d = ImageDraw.Draw(probe)
+    for groesse in range(min(nutz_h, 220), 7, -1):
+        f = _schrift(groesse, schrift)
+        breiten = [d.textlength(z, font=f) for z in zeilen]
+        block_h = groesse * len(zeilen) + groesse * ZEILENABSTAND * (len(zeilen) - 1)
+        if block_h > nutz_h:
+            continue
+        text_l = max(breiten)
+        gesamt = int(text_l + qr_px + (RAND_PX if qr else 0) + 2 * RAND_PX)
+        if max_laenge is not None and gesamt > max_laenge:
+            continue
+        laenge_px = max_laenge if max_laenge is not None else max(gesamt, hoehe)
+        return Layout(hoehe, laenge_px, groesse, round(laenge_px / DPI * 25.4, 1))
+    raise ValueError("Text passt nicht aufs Etikett, auch nicht in kleinster Schrift. "
+                     "Weniger Text oder (bei Endlosrolle) größere laenge_mm.")
+
+
+def rendern(zeilen: list[str], medium: Medium, ziel: Path, laenge_mm: float | None = None,
+            qr_text: str | None = None, rahmen: bool = False,
+            schrift: str | None = None) -> Layout:
+    """Etikett als 1-Bit-PNG: ziel quer zum Ansehen, druckdatei(ziel) hochkant (Breite = Rolle) fuer CUPS."""
+    zeilen = [ersetze_platzhalter(z) for z in zeilen if z.strip()]
+    lay = layout(zeilen, medium, laenge_mm, qr=bool(qr_text), schrift=schrift)
+    f = _schrift(lay.schriftgroesse, schrift)
+    quer = Image.new("1", (lay.laenge_px, lay.breite_px), 1)
+    d = ImageDraw.Draw(quer)
+
+    x0 = RAND_PX
+    if qr_text:
+        import qrcode
+        seite = lay.breite_px - 2 * RAND_PX
+        q = qrcode.make(qr_text, border=1).convert("1").resize((seite, seite), Image.NEAREST)
+        quer.paste(q, (RAND_PX, RAND_PX))
+        x0 = RAND_PX + seite + RAND_PX
+
+    zeilen_h = lay.schriftgroesse * (1 + ZEILENABSTAND)
+    block_h = lay.schriftgroesse * len(zeilen) + lay.schriftgroesse * ZEILENABSTAND * (len(zeilen) - 1)
+    y = (lay.breite_px - block_h) / 2
+    mitte_x = x0 + (lay.laenge_px - RAND_PX - x0) / 2
+    for z in zeilen:
+        d.text((mitte_x, y + lay.schriftgroesse / 2), z, font=f, fill=0, anchor="mm")
+        y += zeilen_h
+    if rahmen:
+        d.rectangle((3, 3, lay.laenge_px - 4, lay.breite_px - 4), outline=0, width=4)
+
+    ziel.parent.mkdir(parents=True, exist_ok=True)
+    quer.save(ziel)
+    quer.rotate(90, expand=True).save(druckdatei(ziel))
+    return lay
+
+
+def druckdatei(vorschau: Path) -> Path:
+    return vorschau.with_name(vorschau.stem + "-druck.png")
+
+
+def cups_optionen_etikett(medium: Medium, lay: Layout) -> list[str]:
+    """lp-Optionen fuer den Etikettendruck: Seitengroesse = Rolle, Schnitt nach dem Auftrag."""
+    laenge = lay.laenge_mm if medium.endlos else medium.laenge_mm
+    return ["-o", f"PageSize=Custom.{medium.breite_mm:g}x{laenge:g}mm",
+            "-o", "fit-to-page", "-o", "CutMedia=EndOfJob"]
+
+
+def cups_optionen_dokument(farbe: bool, duplex: bool, seiten: str | None, kopien: int) -> list[str]:
+    if kopien < 1 or kopien > 50:
+        raise ValueError("kopien muss zwischen 1 und 50 liegen.")
+    opt = ["-n", str(kopien),
+           "-o", "print-color-mode=" + ("color" if farbe else "monochrome"),
+           "-o", "sides=" + ("two-sided-long-edge" if duplex else "one-sided")]
+    if seiten:
+        if not re.fullmatch(r"\d+(-\d+)?(,\d+(-\d+)?)*", seiten.replace(" ", "")):
+            raise ValueError(f"Seitenbereich nicht lesbar: {seiten!r} (Beispiel: '1-3,5').")
+        opt += ["-o", "page-ranges=" + seiten.replace(" ", "")]
+    return opt
