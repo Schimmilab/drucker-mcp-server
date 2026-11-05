@@ -254,3 +254,36 @@ def cups_optionen_dokument(farbe: bool, duplex: bool, seiten: str | None, kopien
             raise ValueError(f"Seitenbereich nicht lesbar: {seiten!r} (Beispiel: '1-3,5').")
         opt += ["-o", "page-ranges=" + seiten.replace(" ", "")]
     return opt
+
+
+# ── Umfangsgrenze für Dokumentdruck ─────────────────────────────────────────
+# Ohne Grenze könnte ein einzelner (z. B. per Prompt-Injection ausgelöster) Aufruf
+# ein langes PDF × 50 drucken. Über der Grenze braucht es eine ausdrückliche Bestätigung.
+MAX_SEITEN_OHNE_BESTAETIGUNG = 20
+
+
+def seiten_im_bereich(seiten: str | None, gesamt: int) -> int:
+    """Anzahl der Seiten, die ein Bereich wie '1-3,5' aus einem Dokument mit `gesamt` Seiten druckt."""
+    if gesamt < 0:
+        raise ValueError("Seitenzahl negativ.")
+    if not seiten:
+        return gesamt
+    gewaehlt: set[int] = set()
+    for teil in seiten.replace(" ", "").split(","):
+        a, _, b = teil.partition("-")
+        von, bis = int(a), int(b) if b else int(a)
+        if von > bis:
+            von, bis = bis, von
+        gewaehlt.update(n for n in range(von, bis + 1) if 1 <= n <= gesamt)
+    return len(gewaehlt)
+
+
+def pruefe_umfang(seiten_gesamt: int, seiten: str | None, kopien: int, bestaetigt: bool,
+                  grenze: int = MAX_SEITEN_OHNE_BESTAETIGUNG) -> int:
+    """Gibt die Zahl der Druckseiten zurück; wirft ValueError, wenn sie die Grenze ohne Bestätigung übersteigt."""
+    umfang = seiten_im_bereich(seiten, seiten_gesamt) * kopien
+    if umfang > grenze and not bestaetigt:
+        raise ValueError(
+            f"Großer Druckauftrag: {umfang} Seiten ({seiten_im_bereich(seiten, seiten_gesamt)} Seiten × {kopien} "
+            f"Kopien), Grenze ohne Bestätigung {grenze}. Erst den Nutzer fragen, dann mit bestaetigt=True erneut aufrufen.")
+    return umfang

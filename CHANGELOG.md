@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4 (2026-11-05)
+
+- Umfangsgrenze für `datei_drucken`: Mehr als 20 Druckseiten (Seiten im Bereich × Kopien) nur mit `bestaetigt=True`. Vorher konnte ein einzelner Aufruf ein beliebig langes PDF bis zu 50-mal drucken. Seitenzahl per `pypdf`, Prüfung vor der Übergabe an CUPS; die Antwort nennt den Umfang.
+
 ## 0.1.3 (2026-10-29)
 
 - IPP: HTTP 503 wird bis zu zweimal wiederholt (Brother QL antwortet so bei mehreren Abfragen kurz hintereinander).

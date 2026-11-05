@@ -187,13 +187,20 @@ def html_zu_pdf(quelle: Path, ziel: Path) -> Path:
     return ziel
 
 
+def _pdf_seiten(pdf: Path) -> int:
+    """Seitenzahl eines PDFs (für die Umfangsgrenze)."""
+    from pypdf import PdfReader
+    return len(PdfReader(str(pdf)).pages)
+
+
 @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "openWorldHint": False})
 def datei_drucken(pfad: str, farbe: bool = False, duplex: bool = False, seiten: str = "",
-                  kopien: int = 1, drucker: str = "") -> str:
+                  kopien: int = 1, drucker: str = "", bestaetigt: bool = False) -> str:
     """Druckt PDF, Markdown (.md) oder HTML – nur auf ausdrücklichen Auftrag.
 
     Markdown/HTML wird vorher per Chrome headless zu einem A4-PDF. farbe=False druckt schwarz-weiß.
     seiten z. B. '1-3,5'. drucker leer = DRUCKER_DOKUMENT bzw. CUPS-Standard.
+    Mehr als 20 Druckseiten (Seiten × Kopien) nur mit bestaetigt=True – vorher den Nutzer fragen.
     """
     quelle = Path(pfad).expanduser()
     if not quelle.is_file():
@@ -208,10 +215,11 @@ def datei_drucken(pfad: str, farbe: bool = False, duplex: bool = False, seiten: 
         druck = html_zu_pdf(quelle, AUSGABE / (quelle.stem + ".pdf"))
     else:
         raise ValueError(f"Nicht unterstützt: {endung} (PDF, Markdown oder HTML).")
+    umfang = logik.pruefe_umfang(_pdf_seiten(druck), seiten or None, kopien, bestaetigt)
     queue = drucker or os.environ.get("DRUCKER_DOKUMENT") or None
     auftrag = cups.drucken(queue, str(druck), opt, titel=quelle.name)
     return (f"Gedruckt: Auftrag {auftrag} auf {queue or 'Standarddrucker'} "
-            f"({'Farbe' if farbe else 'SW'}, {'duplex' if duplex else 'einseitig'}, {kopien}×)\n"
+            f"({'Farbe' if farbe else 'SW'}, {'duplex' if duplex else 'einseitig'}, {kopien}×, {umfang} Seiten)\n"
             f"Datei: file://{druck}")
 
 

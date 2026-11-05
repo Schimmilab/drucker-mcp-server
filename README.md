@@ -19,7 +19,7 @@ Die Schriftgröße wählt man über `groesse`: `klein` (~4 mm), `mittel` (~7 mm,
 | `etikett_rolle` | liest die eingelegte Rolle (Breite, endlos/vorgestanzt) |
 | `etikett_vorschau` | rendert das Etikett als PNG, **ohne zu drucken** |
 | `etikett_drucken` | druckt 1–20 Kopien; Zeilen, Größe, optional feste Länge, QR-Code und Rahmen |
-| `datei_drucken` | PDF/Markdown/HTML, Farbe oder SW, Duplex, Seitenbereich, Kopien; Markdown/HTML wird per Chrome headless zu A4-PDF |
+| `datei_drucken` | PDF/Markdown/HTML, Farbe oder SW, Duplex, Seitenbereich, Kopien; Markdown/HTML wird per Chrome headless zu A4-PDF. Über 20 Druckseiten (Seiten × Kopien) nur mit `bestaetigt=True` |
 | `druckauftraege` | offene Aufträge (z. B. wenn ein Drucker aus ist) |
 | `druckauftrag_abbrechen` | offenen Auftrag abbrechen |
 
